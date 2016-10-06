@@ -919,7 +919,7 @@ module ApplicationHelper
                      :target => "_parent",
                      :URL    => url,
                      :label  => label,
-                     :color  => to_color(ci.rfcAction))
+                     :color  => rfc_action_to_color(ci.rfcAction))
 
       Cms::DjRelation.all(:params => {:ciId => node.toCiId, :relationShortName => 'DependsOn', :direction => 'from'}).each do |edge|
         if edge.relationAttributes.flex == 'true'
@@ -1127,7 +1127,13 @@ module ApplicationHelper
       description = md_attribute.description.presence || attr_name
       data_type   = md_attribute.dataType
       json        = data_type == 'hash' || data_type == 'array' || data_type == 'struct'
-      attr_value  = JSON.parse(attr_value) if json && attr_value.present?
+      if json && attr_value.present?
+        begin
+          attr_value = JSON.parse(attr_value)
+        rescue
+          json = false
+        end
+      end
       result << %(<dt title="#{ description }">#{ description }</dt>)
       result << %(<dd class="diff-container">)
       if attr_value.blank?
