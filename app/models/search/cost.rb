@@ -185,10 +185,10 @@ class Search::Cost < Search::Base
     }
 
     begin
-      # data = JSON.parse(post('/cost-*/ci/_search', {}, search_params.to_json).body)
+      # data = JSON.parse(post('/cost/ci/_search', {}, search_params.to_json).body)
       # return data
 
-      data  = JSON.parse(post('/cost-*/ci/_search', {}, search_params.to_json).body)['aggregations']
+      data  = JSON.parse(post('/cost/ci/_search', {}, search_params.to_json).body)['aggregations']
       total = data['total']['value']
       if total > 0
         unit = data['unit']['buckets'][0]
@@ -295,6 +295,56 @@ class Search::Cost < Search::Base
                 :total      => data['total']['value'].round(2)}
     rescue Exception => e
       handle_exception e, "Failed to fetch 'cost_time_histogram' for nsPath=#{ns_path}, date range=[#{start_date}, #{end_date}], interval=#{interval}"
+    end
+    return result
+  end
+
+  # Experimental stuff - not used for now.
+  def self.ha(ns_path = '/')
+    result = nil
+
+    search_params = {
+      :query   => {
+        :bool => {:must   => [{:wildcard => {'nsPath.keyword' => "#{ns_path}#{'/' unless ns_path.last == '/'}*"}},
+                              {:regexp => {'workorder.payLoad.Environment.ciAttributes.profile.keyword' => '.*[pP][rR][oO][dD].*'}},
+                              {:term => {'workorder.cloud.ciAttributes.priority' => '1'}},
+                              {:wildcard => {'ciClassName.keyword' => 'bom*Compute'}}],
+                  :should => [{:wildcard => {'workorder.cloud.ciName.keyword' => '*dfw*'}},
+                              {:wildcard => {'workorder.cloud.ciName.keyword' => '*dal*'}}],
+                  :minimum_number_should_match => 1
+        }
+      },
+      :aggs => {
+        :nsPath => {
+          :terms => {
+            :field => 'nsPath.keyword',
+            :size  => 99999
+          },
+          :aggs    => {
+            :clouds => {
+              :filters => {
+                :filters => {
+                  :dfw => {:query => {:wildcard => {'workorder.cloud.ciName.keyword' => '*dfw*'}}},
+                  :dal => {:query => {:wildcard => {'workorder.cloud.ciName.keyword' => '*dal*'}}}
+                }
+              }
+            }
+          }
+        }
+      },
+      :size => 0
+    }
+    begin
+      data  = JSON.parse(post('/cms-all/ci/_search', {}, search_params.to_json).body)['aggregations']['nsPath']['buckets']
+      # return data
+      result = data.sort_by {|b| b['key']}.inject('') do |s, b|
+        root, org, assembly, env, bom, platform = b['key'].split('/', 6)
+        s << "#{org},#{assembly},#{env},#{platform},#{b['clouds']['buckets']['dfw']['doc_count']},#{b['clouds']['buckets']['dal']['doc_count']}\n"
+        s
+      end
+
+    rescue Exception => e
+      handle_exception e, "Failed to fetch ha data for nsPath #{ns_path}"
     end
     return result
   end
