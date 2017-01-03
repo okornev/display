@@ -30,6 +30,7 @@ Display::Application.routes.draw do
   get 'r/instances/:id/monitors/:monitor/d' => 'redirect#monitor_doc', :as => 'redirect_instance_monitor_doc'
 
   get 'l/ci/:id'         => 'lookup#ci',         :as => 'lookup_ci'
+  get 'l/ci/:id/:attribute_name' => 'lookup#ci', :as => 'lookup_ci_attribute'
   get 'l/release/:id'    => 'lookup#release'
   get 'l/r/:id'          => 'lookup#release',    :as => 'lookup_release'
   get 'l/deployment/:id' => 'lookup#deployment'
@@ -108,7 +109,10 @@ Display::Application.routes.draw do
   resources :authentications, :only => [:create, :destroy]
 
   resources :clouds, :controller => 'cloud/clouds', :only => :none do
-    get :public_services,  :on => :collection
+    collection do
+      get :services
+      get :offerings
+    end
   end
 
   scope '/:org_name' do
@@ -124,7 +128,12 @@ Display::Application.routes.draw do
         get 'cost'
       end
 
-      resources :users, :controller => 'organization/users'
+      resources :users, :controller => 'organization/users' do
+        collection do
+          post 'confirm_remove'
+          delete 'remove'
+        end
+      end
 
       resources :teams, :controller => 'organization/teams' do
         resources :members, :controller => 'organization/team_members', :as => :members, :only => [:index, :create, :destroy]
@@ -157,7 +166,11 @@ Display::Application.routes.draw do
     end
 
     resources :clouds, :controller => 'cloud/clouds' do
-      get :locations, :on => :collection
+      collection do
+        get :locations
+        get :services
+        get :offerings
+      end
 
       member do
         get :operations
@@ -308,6 +321,14 @@ Display::Application.routes.draw do
           get  'latest',  :on => :collection
           post 'commit',  :on => :member
           post 'discard', :on => :member
+          post 'restore', :on => :member
+        end
+
+        resource :timeline, :controller => '/timeline', :only => [:show] do
+          get 'page', :on => :member
+
+          resources :releases, :only => [:show]
+          resources :deployments, :only => [:show]
         end
       end
 
@@ -385,6 +406,7 @@ Display::Application.routes.draw do
             get  'latest',  :on => :collection
             get  'bom',     :on => :collection
             post 'discard', :on => :member
+            post 'restore', :on => :member
           end
 
           resources :deployments, :only => [:new, :create, :edit, :update, :show, :index] do
