@@ -23,7 +23,9 @@ module ApplicationHelper
                 :export                 => 'download',
                 :import                 => 'upload',
                 :timeline               => 'clock-o',
-                :history                => 'history'}
+                :history                => 'history',
+                :release                => 'tag',
+                :deployment             => 'cloud-upload'}
 
   GENERAL_SITE_LINKS = [{:label => 'Get help',         :icon => 'comments',  :url => Settings.support_chat_url},
                         {:label => 'Report a problem', :icon => 'bug',       :url => Settings.report_problem_url},
@@ -282,8 +284,18 @@ module ApplicationHelper
       items.each do |item|
         html << '<li>'
         block = ''
-        block << content_tag(:div, image_tag(item[:icon]), :class => 'breadcrumb_image') if item[:icon]
-        block << content_tag(:div, sanitize(item[:kind]), :class => 'item_kind') if item[:kind]
+
+        icon_name = item[:icon]
+        kind      = item[:kind]
+        if icon_name.present?
+          icon = site_icon!(icon_name)
+          if icon.present?
+            block << content_tag(:div, icon(icon), :class => 'breadcrumb_image')
+          else
+            block << content_tag(:div, image_tag(icon_name), :class => 'breadcrumb_image')
+          end
+        end
+        block << content_tag(:div, sanitize(kind), :class => 'item_kind') if kind
         block << content_tag(:div, sanitize(item[:label]), :class => 'item_label')
         html << content_tag(:div, (item[:link] ? link_to(sanitize(block), item[:link]) : block.html_safe), :class => 'breadcrumb_text')
         html << content_tag(:div, icon('angle-right'), :class => 'breadcrumb_separator_text')
@@ -988,9 +1000,13 @@ module ApplicationHelper
     "#{env.ciName}#{" #{breadcrumb_marker("#{profile}", 'label-info')}" if profile}"
   end
 
+  def breadcrumb_environment_icon(env = @environment)
+    "#{@environment.ciAttributes.availability}_availability"
+  end
+
   def breadcrumb_platform_label(platform = @platform)
     active = platform.ciAttributes.attributes.has_key?(:is_active) && @platform.ciAttributes.is_active == 'false' ? false : true
-    "#{platform.ciName} #{breadcrumb_marker("version #{platform.ciAttributes.major_version}", active ? 'label-success' : '')}"
+    "#{platform.ciName} #{breadcrumb_marker("ver. #{platform.ciAttributes.major_version}", active ? 'label-success' : '')}"
   end
 
   def release_state_icon(state, additional_classes = '')
