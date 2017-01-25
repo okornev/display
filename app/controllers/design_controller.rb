@@ -171,6 +171,8 @@ class DesignController < ApplicationController
             if monitors.present?
               comp['monitors'] = monitors.sort_by {|a| a['name']}.to_map_with_value do |a|
                 attrs = a['attributes']
+                watched_by_attrs = a['watchedBy']
+                attrs.merge!(watched_by_attrs) if watched_by_attrs.present?
                 attrs = convert_json_attrs_from_string(attrs, 'catalog.Monitor') unless collapse
                 [a['name'], attrs]
               end
@@ -259,6 +261,7 @@ class DesignController < ApplicationController
       platform_md_attrs   = Cms::CiMd.look_up('catalog.Platform').mdAttributes.map(&:attributeName)
       attachment_md_attrs = Cms::CiMd.look_up('catalog.Attachment').mdAttributes.map(&:attributeName)
       monitor_md_attrs    = Cms::CiMd.look_up('catalog.Monitor').mdAttributes.map(&:attributeName)
+      watched_by_md_attrs = Cms::RelationMd.look_up('catalog.WatchedBy').mdAttributes.map(&:attributeName)
 
       result['platforms'] = []
       errors['platforms'] = {}
@@ -366,25 +369,27 @@ class DesignController < ApplicationController
                           monitors.each do |monitor_name, monitor|
                             errors['platforms'][plat_name]['components'][template_and_class][comp_name]['monitors'][monitor_name] = {}
 
-                            monitor_template = Cms::Ci.first(:params => {:nsPath      => platform_pack_ns_path,
-                                                                         :ciClassName => 'mgmt.catalog.Monitor',
-                                                                         :ciName      => monitor_name.split('-').last})
+                            monitor_attrs    = convert_json_attrs_to_string(monitor.slice(*monitor_md_attrs))
+                            watched_by_attrs = convert_json_attrs_to_string(monitor.slice(*watched_by_md_attrs))
 
-                            monitor_attrs = monitor.slice(*monitor_md_attrs)
-                            monitor_attrs = convert_json_attrs_to_string(monitor_attrs)
+                            monitor_template = monitor_name.start_with?("#{plat_name}-#{comp_name}-") &&
+                              Cms::Ci.first(:params => {:nsPath      => platform_pack_ns_path,
+                                                        :ciClassName => 'mgmt.catalog.Monitor',
+                                                        :ciName      => monitor_name.split('-').last})
                             if monitor_template
-                              monitor_attrs = monitor_template.ciAttributes.attributes.merge(monitor_attrs)
                               monitor_attrs.delete(:custom)
                             else
                               monitor_attrs.merge!(:custom => 'true')
+                              watched_by_attrs.merge!(:soure => 'design')
                             end
                             monitor_ci = Cms::DjCi.build({:ciClassName  => 'catalog.Monitor',
                                                           :nsPath       => platform_ns_path,
                                                           :ciName       => monitor_name,
-                                                          :ciAttributes => monitor_attrs})
+                                                          :ciAttributes => monitor_template ? monitor_template.ciAttributes.attributes.merge(monitor_attrs) : monitor_attrs})
                             monitor_ci.add_policy_locations(pack_ns_path)
 
                             errors['platforms'][plat_name]['components'][template_and_class][comp_name]['monitors'][monitor_name]['errors'] = monitor_ci.errors.full_messages unless monitor_ci.valid?
+                            monitor_ci.ciAttributes.watchedBy = watched_by_attrs if watched_by_attrs.present?
                             result['platforms'].last['components'].last['monitors'] << ci_to_load(monitor_ci, :attributes => monitor_attrs)
                           end
                         end
@@ -432,27 +437,6 @@ class DesignController < ApplicationController
       end
     end
     return data, format
-  end
-
-  def convert_json_attrs_from_string(attrs, ci_class_name)
-    return attrs if attrs.blank?
-
-    types = %w(array hash struct)
-    ci_md = Cms::CiMd.look_up(ci_class_name)
-    attrs.each_pair do |k, v|
-      if v.present?
-        attr_md = ci_md.md_attribute(k)
-        if attr_md
-          if types.include?(attr_md.dataType)
-            begin
-              attrs[k] = JSON.parse(v)
-            rescue Exception => e
-              # Do nothing - leave as string.
-            end
-          end
-        end
-      end
-    end
   end
 
   def convert_json_attrs_to_string(attrs)
