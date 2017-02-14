@@ -1,4 +1,5 @@
 class Operations::PlatformsController < Base::PlatformsController
+  include ::Health
   before_filter :find_assembly_environment_platform
 
   def index
@@ -178,6 +179,13 @@ class Operations::PlatformsController < Base::PlatformsController
 
       format.json { render_json_ci_response(ok, @platform) }
     end
+  end
+
+
+  protected
+
+  def search_ns_path
+    platform_bom_ns_path(@environment, @platform)
   end
 
 

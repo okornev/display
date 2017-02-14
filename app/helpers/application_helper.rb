@@ -340,8 +340,8 @@ module ApplicationHelper
     content_for(:page_title, raw(html))
   end
 
-  def page_info(info)
-    content_for(:page_info, sanitize(info || ''))
+  def page_info(info = nil, &block)
+    content_for(:page_info, sanitize(info) || (block_given? ? capture(&block) : ''))
   end
 
   def error_messages_for(model)
@@ -768,7 +768,7 @@ module ApplicationHelper
   def status_marker(name, value, label_class = '', options = {})
     toggle = options['data-toggle']
     marker = content_tag(:span, raw(name), :class => "label label-marker-name #{options.delete(:name_class)}")
-    marker << content_tag(:span, raw("#{value}#{" #{icon('caret-down')}" if toggle}"), :class => "label label-marker-value #{label_class}")
+    marker << content_tag(:span, raw("#{value}#{" #{icon('caret-down')}" if toggle}"), :class => "label label-marker-value #{label_class}", :onclick => toggle ? nil : "selectText(this)")
     id = random_dom_id
     result = content_tag(:div, marker.html_safe, options.merge(:class => 'marker', :id => id))
     result += javascript_tag(%($j("##{id}").#{toggle}())) if toggle
@@ -895,7 +895,7 @@ module ApplicationHelper
   end
 
   def random_dom_id
-    SecureRandom.random_number(36**6).to_s(36)
+    "a#{SecureRandom.random_number(36**6).to_s(36)}"
   end
 
   def diagram
@@ -992,7 +992,7 @@ module ApplicationHelper
   end
 
   def breadcrumb_marker(text, label_class = '', options = {})
-    content_tag(:span, text, options.merge(:class => "label label-breadcrumb #{label_class}"))
+    content_tag(:sub, text, options.merge(:class => "label label-breadcrumb #{label_class}"))
   end
 
   def breadcrumb_environment_label(env = @environment)
@@ -1001,12 +1001,22 @@ module ApplicationHelper
   end
 
   def breadcrumb_environment_icon(env = @environment)
-    "#{@environment.ciAttributes.availability}_availability"
+    "#{env.ciAttributes.availability}_availability"
   end
 
   def breadcrumb_platform_label(platform = @platform)
-    active = platform.ciAttributes.attributes.has_key?(:is_active) && @platform.ciAttributes.is_active == 'false' ? false : true
-    "#{platform.ciName} #{breadcrumb_marker("ver. #{platform.ciAttributes.major_version}", active ? 'label-success' : '')}"
+    if platform.ciClassName.start_with?('mgmt')
+      if platform.ciClassName.end_with?('catalog.Platform')
+        bc_label = icon(site_icon('design'), 'design')
+      else
+        availability = platform.nsPath.split('/').last
+        bc_label     = icon(availability == 'redundant' ? 'cubes' : 'cube', "#{availability} availability")
+      end
+      "#{platform.ciName} #{content_tag(:sub, "ver. #{platform.ciAttributes.major_version}", :class => 'label label-success')} #{content_tag(:sub, bc_label)}"
+    else
+      active = platform.ciAttributes.attributes.has_key?(:is_active) && platform.ciAttributes.is_active == 'false' ? false : true
+      "#{platform.ciName} #{content_tag(:sub, "ver. #{platform.ciAttributes.major_version}", :class => "label #{'label-success' if active}")}"
+    end
   end
 
   def release_state_icon(state, additional_classes = '')

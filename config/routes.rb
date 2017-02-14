@@ -51,6 +51,7 @@ Display::Application.routes.draw do
       get  'organizations'
       get  'users'
       get  'user'
+      get  'cost'
 
       get 'organization/:name', :action => 'organization', :as => 'organization'
       # delete 'organization/:name', :action => 'organization'
@@ -276,6 +277,7 @@ Display::Application.routes.draw do
         get  'search'
         get  'cost_rate'
         get  'cost'
+        get  'health'
       end
 
       resources :instances, :controller => 'operations/instances', :only => [:index]
@@ -504,6 +506,8 @@ Display::Application.routes.draw do
             get 'autoreplace', :on => :member
             put 'autoreplace', :on => :member
             put 'autoscale',   :on => :member
+            get 'search',      :on => :member
+            get 'health',        :on => :member
           end
 
           resources :instances, :only => [:index]
@@ -513,6 +517,7 @@ Display::Application.routes.draw do
           get 'search',        :on => :member
           get 'cost',          :on => :member
           get 'cost_rate',     :on => :member
+          get 'health',        :on => :member
         end
 
         resources :instances, :only => :none do
