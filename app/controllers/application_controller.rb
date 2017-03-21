@@ -39,7 +39,8 @@ class ApplicationController < ActionController::Base
                 :has_cloud_services?, :has_cloud_compliance?, :has_cloud_support?, :allowed_to_settle_approval?,
                 :path_to_ci, :path_to_ci!, :path_to_ns, :path_to_ns!, :path_to_release, :path_to_deployment,
                 :ci_image_url, :ci_class_image_url, :platform_image_url, :pack_image_url,
-                :graphvis_sub_ci_remote_images, :packs_info, :design_platform_ns_path
+                :graphvis_sub_ci_remote_images, :packs_info, :design_platform_ns_path,
+                :has_support_permission?
 
   AR_CLASSES_WITH_HEADERS = [Cms::Ci, Cms::DjCi, Cms::Relation, Cms::DjRelation, Cms::RfcCi, Cms::RfcRelation,
                              Cms::Release, Cms::ReleaseBom, Cms::Procedure, Transistor,
@@ -393,6 +394,29 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  def locate_pack_for_platform(platform)
+    attrs = platform.ciAttributes
+    locate_pack(attrs.source, attrs.pack)
+  end
+
+  def locate_pack(source, pack)
+    Cms::Ci.first(:params => {:nsPath       => "/public/#{source}/packs",
+                              :ciClassName  => 'mgmt.Pack',
+                              :ciName       => pack})
+  end
+
+  def locate_pack_version_for_platform(platform)
+    attrs = platform.ciAttributes
+    locate_pack_version(attrs.source, attrs.pack, attrs.version)
+  end
+
+  def locate_pack_version(source, pack, version)
+    Cms::Ci.first(:params => {:nsPath       => "/public/#{source}/packs/#{pack}",
+                              :ciClassName  => 'mgmt.Version',
+                              :ciName       => version,
+                              :includeAltNs => Catalog::PacksController::ORG_VISIBILITY_ALT_NS_TAG})
+  end
+
   def locate_design_platform(qualifier, assembly, opts = {})
     Cms::DjCi.locate(qualifier, assembly_ns_path(assembly), 'catalog.Platform', opts)
   end
@@ -421,11 +445,17 @@ class ApplicationController < ActionController::Base
     result
   end
 
-  def locate_ci_in_platform_ns(qualifier, platform, ci_class_name = nil, opts = {})
+  def locate_ci_in_platform_ns(qualifier, platform, ci_class_name = nil, opts = {}, &block)
     ns_path = (in_design? || in_catalog?) ? "#{platform.nsPath}/_design/#{platform.ciName}" : platform.nsPath
-    ci = Cms::DjCi.locate(qualifier, ns_path, ci_class_name, opts)
+    ci = Cms::DjCi.locate(qualifier, ns_path, ci_class_name, opts, &block)
     ci.add_policy_locations(platform_pack_ns_path(platform))
     return ci
+  end
+
+  def locate_component_in_manifest_ns(component_id, platform, class_name = nil, opts = {})
+    locate_ci_in_platform_ns(component_id, platform, class_name, opts) do |results|
+      results.find { |ci| !%w(Platform Attachment Monitor Localvar).include?(ci.ciClassName.split('.').last) }
+    end
   end
 
   def locate_cloud_service_template(service)
@@ -563,8 +593,13 @@ class ApplicationController < ActionController::Base
       if current_user.username != session[:username]
         logger.error "Current username '#{current_user.username}' doesn't match session: #{session.inspect}"
         sign_out
-        flash[:alert] = 'Please verify your identity by signing in.'
-        redirect_to new_user_session_path
+        message = 'Please verify your identity by signing in.'
+        flash.now[:alert] = message
+        respond_to do |format|
+          format.html { redirect_to new_user_session_url}
+          format.js   { render :js => "window.location = '#{new_user_session_url}'" }
+          format.json { render :json => {:errors => [message]}, :status => :unauthorized }
+        end
         return
       end
 
@@ -576,7 +611,7 @@ class ApplicationController < ActionController::Base
           redirect_to new_user_session_path(:message => message)
         else
           flash[:error] = message
-          redirect_to new_user_session_path
+          redirect_to new_user_session_path, :status => :see_other
         end
       end
     end
@@ -588,7 +623,7 @@ class ApplicationController < ActionController::Base
       if user.reset_password_token?
         sign_out
         flash[:notice] = 'Please reset your password.'
-        redirect_to edit_password_url(user, :reset_password_token => user.reset_password_token)
+        redirect_to edit_password_url(user, :reset_password_token => user.reset_password_token), :status => :see_other
       end
     end
   end
@@ -616,7 +651,11 @@ class ApplicationController < ActionController::Base
 
   def check_eula
     return unless user_signed_in? && current_user.eula_accepted_at.blank?
-    redirect_to show_eula_account_profile_path
+    respond_to do |format|
+      format.html { redirect_to show_eula_account_profile_path}
+      format.js   { render :js => "window.location = '#{show_eula_account_profile_path}'" }
+      format.json { render :json => {:errors => ['EULA not accepted']}, :status => :unauthorized }
+    end
   end
 
   def check_organization
@@ -708,7 +747,7 @@ class ApplicationController < ActionController::Base
     return graph
   end
 
-  def packs_info
+  def packs_info(org = current_user.organization.name)
     pack_versions = {}
     packs         = {}
     pack_sources  = Cms::Ci.all(:params => {:nsPath => '/public', :ciClassName => 'mgmt.Source'}).map(&:ciName)
@@ -721,14 +760,19 @@ class ApplicationController < ActionController::Base
       m[source] << c
       m
     end
-    version_map = Cms::Ci.all(:params => {:nsPath      => '/public',
-                                          :ciClassName => 'mgmt.Version',
-                                          :recursive   => true}).inject({}) do |m, version|
-      enabled = version.ciAttributes.attributes['enabled']
-      unless enabled && enabled == 'false'
-        m[version.nsPath] ||= []
-        m[version.nsPath] << version.ciName
-      end
+    versions = Cms::Ci.all(:params => {:nsPath      => '/public',
+                                       :ciClassName => 'mgmt.Version',
+                                       :recursive   => true,
+                                       :attr        => 'enabled:neq:false'})
+    versions += Cms::Ci.all(:params => {:nsPath      => '/public',
+                                        :ciClassName => 'mgmt.Version',
+                                        :recursive   => true,
+                                        :attr        => 'enabled:eq:false',
+                                        :altNsTag    => Catalog::PacksController::ORG_VISIBILITY_ALT_NS_TAG,
+                                        :altNs       => organization_ns_path(org)})
+    version_map = versions.inject({}) do |m, version|
+      m[version.nsPath] ||= []
+      m[version.nsPath] << version.ciName
       m
     end
     pack_sources.each do |source|
@@ -751,14 +795,14 @@ class ApplicationController < ActionController::Base
     return pack_sources, pack_versions, packs
   end
 
-  def render_json_ci_response(ok, ci, errors = nil)
+  def render_json_ci_response(ok, ci, errors = nil, status = nil)
     errors = [errors] if errors.present? && !errors.is_a?(Array)
     if ok && ci.present?
       render :json => ci, :status => :ok
     elsif ci
-      render :json => {:errors => errors || ci.errors.full_messages}, :status => :unprocessable_entity
+      render :json => {:errors => errors || ci.errors.full_messages}, :status => status || :unprocessable_entity
     else
-      render :json => {:errors => errors || ['not found']}, :status => :not_found
+      render :json => {:errors => errors || ['not found']}, :status => status || :not_found
     end
   end
 
@@ -770,7 +814,7 @@ class ApplicationController < ActionController::Base
     respond_to do |format|
       format.html { redirect_to redirect_path, :alert => message }
       format.js   { render :js => "$j('.modal').modal('hide'); flash(null, 'Unauthorized access!')" }
-      format.json { render :json => message, :status => :unauthorized }
+      format.json { render :json => {:errors => [message]}, :status => :unauthorized }
     end
   end
 
@@ -1238,5 +1282,32 @@ class ApplicationController < ActionController::Base
         end
       end
     end
+  end
+
+  def support_permissions
+    return @permissions if @permissions
+
+    @permissions = {}
+    auth_config = Settings.support_auth
+    if auth_config.present?
+      begin
+        auth_json = JSON.parse(auth_config)
+      rescue Exception => e
+        auth_json = {'*' => auth_config}
+      end
+
+      user_groups = current_user.groups.pluck(:name).to_map
+      @permissions = auth_json.inject({}) do |h, (perm, groups)|
+        ok = (groups.is_a?(Array) ? groups : groups.to_s.split(',')).any? { |g| user_groups[g.strip] }
+        h[perm] = ok if ok
+        h
+      end
+    end
+    @permissions
+  end
+
+  def has_support_permission?(permission)
+    permissions = support_permissions
+    permissions['*'] || permissions[permission]
   end
 end

@@ -15,13 +15,16 @@ class Search::Base < ActiveResource::Base
     size         = options.delete(:size) || 9999
     from         = options.delete(:from) || 0
     sort         = options.delete(:sort) || []
-    query_string = options.delete(:query)
-    query        = build_common_query(options, options.delete(:nsPath))
-
-    query << {:query_string => query_string.is_a?(Hash) ? query_string : {:query => query_string}} if query_string.present?
+    as_is_query  = options.delete(:_query)
+    if as_is_query.blank?
+      query_string = options.delete(:query)
+      query        = build_common_query(options, options.delete(:nsPath))
+      query << {:query_string => query_string.is_a?(Hash) ? query_string : {:query => query_string}} if query_string.present?
+      as_is_query = {:bool => {:must => query}}
+    end
 
     search_params = {
-      :query => {:bool => {:must => query}},
+      :query => as_is_query,
       :sort  => sort,
       :size  => size,
       :from  => from
@@ -166,10 +169,8 @@ class Search::Base < ActiveResource::Base
 
   def self.run_search(path, search_params, silent = nil, timeout = nil)
     result = nil
-    if timeout
-      old_timeout = self.timeout
-      self.timeout = timeout
-    end
+    old_timeout = self.timeout
+    self.timeout = timeout if timeout
     begin
       data          = JSON.parse(post(path, {}, search_params.to_json).body)
       result        = data['hits']['hits'].map { |r| r['_source'] }
@@ -184,8 +185,9 @@ class Search::Base < ActiveResource::Base
       else
         raise e
       end
+    ensure
+      self.timeout = old_timeout if timeout
     end
-    self.timeout = timeout if timeout
     result
   end
 end

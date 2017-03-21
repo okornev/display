@@ -563,17 +563,17 @@ img.authicon {
   margin: 0;
 }
 
-#overlay div.controls input.button, #overlay div.controls button {
+#overlay div.controls td input.button, #overlay div.controls td button {
   height:    40px;
   font-size: 16px;
   min-width: 80px;
 }
 
-#overlay div.controls div.btn-group .dropdown-menu {
+#overlay div.controls td div.btn-group .dropdown-menu {
   text-align: left;
 }
 
-#overlay div.controls a.btn {
+#overlay div.controls td a.btn {
   font-size: 16px;
   height: 30px;
 }
@@ -1793,7 +1793,14 @@ img.authicon {
   font-size:    10px;
   text-align:   left;
   opacity:      1;
-  z-index:      5;
+  z-index:      10;
+}
+
+.list-body li .status .popover {
+  font-size: 12px;
+  left: 0 !important;
+  right: auto;
+  width: auto;
 }
 
 .list-body li .menu {
@@ -2635,32 +2642,6 @@ ul.status div.description ul.status-actions li, div.release ul.status-actions li
 	position: relative;
   display: inline;
   padding: 2px;
-}
-
-.status table {
-  margin:          0 auto;
-  width:           560px;
-  padding:         10px;
-  border-spacing:  0px;
-  border-width:    0px;
-  border-collapse: collapse;
-}
-
-.status table tr th {
-  font-weight:    bold;
-  text-align:     center;
-  padding:        5px;
-  border-spacing: 0px;
-  border-width:   1px;
-  border:         solid 1px #888;
-  background:     #aaa;
-  color:          #fff;
-}
-
-.status table tr td {
-  padding:        5px;
-  border-spacing: 0px;
-  border-width:   0px;
 }
 
 div.rfc-list, div.action-list {
@@ -4044,6 +4025,7 @@ ul.log li.error {
 .report table {
   border: 1px solid #bbb;
   border-spacing: 0;
+  margin: 5px;
 }
 
 .report tr.total {
@@ -4326,6 +4308,14 @@ hr {
 
 .dl-horizontal.narrow dd {
   margin-left: 80px;
+}
+
+.dl-horizontal.narrowest dt {
+  width: 20px;
+}
+
+.dl-horizontal.narrowest dd {
+  margin-left: 30px;
 }
 
 .label-notice {
@@ -4631,6 +4621,15 @@ i.relation {
 .form-horizontal .form-actions {
   text-align: center;
   padding: 15px;
+}
+
+.status .well .form-actions {
+  margin: 0;
+  padding: 10px;
+}
+
+.status .well h5 {
+  margin-top: 0;
 }
 
 .btn-small .caret {

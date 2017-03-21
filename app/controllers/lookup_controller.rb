@@ -177,6 +177,56 @@ class LookupController < ApplicationController
     render :json => result, :status => result.blank? ? :unauthorized : :ok
   end
 
+  def ci_lookup
+    org = params[:org]
+    query = params[:query]
+    if org.blank? || query.blank?
+      render :json => []
+      return
+    end
+
+    dto_scope = params[:dto]
+
+    tokens = query.split(/\s+/).inject([]) do |a, t|
+      case t
+        when 'd', 't', 'o'
+          dto_scope = t
+        else
+          a << t
+      end
+      a
+    end
+
+    query_string = {:query  => tokens.map { |t| %("#{t}") }.join(' AND '),
+                    :fields => %w(ciName nsPath)}
+    must = [{:wildcard => {'nsPath.keyword' => "/#{org}/*"}},
+            {:query_string => query_string}]
+
+    case dto_scope
+      when 'd'
+        must << {:wildcard => {'ciClassName.keyword' =>  'catalog.*'}}
+      when 't'
+        must << {:wildcard => {'ciClassName.keyword' =>  'manifest.*'}}
+      when 'o'
+        query_string[:fields] << 'workorder.cloud.ciName'
+        must << {:wildcard => {'ciClassName.keyword' =>  'bom.*'}}
+    end
+
+    should = []
+    assembly = params[:assembly]
+    if assembly.present?
+      environment = params[:environment]
+      should = [{:wildcard => {'nsPath.keyword' => "/#{org}/#{assembly}/#{"#{environment}/" if environment.present?}*"}}]
+    end
+
+    search_params = {:size    => (params[:max_size] || 20).to_i,
+                     :_query => {:bool => {:must => must, :should => should, :minimum_should_match => 0}},
+                     :_source => %w(ciName ciClassName nsPath ciId),
+                     :_silent => []}
+    result = Cms::Ci.search(search_params)
+    render :json => result
+  end
+
 
   private
 
