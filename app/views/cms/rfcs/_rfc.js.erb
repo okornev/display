@@ -1,4 +1,4 @@
-//if (!window.toggle_rfc_tab) {
+if (!window.toggle_rfc_tab) {
   window.toggle_rfc_tab = function (source, rfcId, tabName) {
     source = $j(source);
     var ul = source.parents(".accordion-toggle").find('.nav'),
@@ -19,13 +19,13 @@
           tab.addClass('.calculated')
         }
       }
-      <% if @deployment && @deployment.persisted? %>
       else if (tabName == 'log' && !tab.html()) {
         tab.html('<%= escape_javascript(loading_indicator) %>');
-        $j.get("<%= log_data_assembly_transition_environment_deployment_path(@assembly, @environment, @deployment) %>",
-               {rfcId: rfcId});
+        var url = source.parents("[data-log-url]").data('log-url');
+        if (url) {
+          $j.get(url, {rfcId: rfcId});
+        }
       }
-      <% end %>
     }
   };
-//}
+}
