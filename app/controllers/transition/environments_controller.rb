@@ -297,15 +297,23 @@ class Transition::EnvironmentsController < Base::EnvironmentsController
   end
 
   def extract
-    collapse = params[:collapse]
-    collapse = false if collapse == 'false'
+    respond_to do |format|
+      format.json { render :json => process_extract }
+      format.yaml { render :text => process_extract.to_yaml, :content_type => 'text/data_string' }
+    end
+  end
+
+  def load
+    data_file = params[:data_file]
+    loaded, message = Transistor.import_environment(@environment, (data_file && data_file.read).presence || params[:data])
+
     respond_to do |format|
       format.json do
-        render :json => export_environment(collapse, params[:platform_id])
-      end
-
-      format.yaml do
-        render :text => export_environment(collapse, params[:platform_id]).to_yaml, :content_type => 'text/data_string'
+        if loaded
+          render(:json => @environment, :status => :ok)
+        else
+          render(:json   => {:errors => [message]}, :status => :unprocessable_entity)
+        end
       end
     end
   end
@@ -562,8 +570,17 @@ class Transition::EnvironmentsController < Base::EnvironmentsController
     end
   end
 
+  def process_extract
+    platform_ids = params[:platform_id]
+    params[:raw].blank? ? export_environment(params[:collapse] == 'false' ? false : true, platform_ids) : export_environment_raw(platform_ids)
+  end
+
+  def export_environment_raw(platform_id = nil)
+    Transistor.export_environment(@environment, platform_id && [platform_id])
+  end
+
   def export_environment(collapse, platform_id = nil)
-    data   = Transistor.export_environment(@environment, platform_id && [platform_id])
+    data   = export_environment_raw(platform_id)
     result = {}
 
     environment = data['environment']['attributes'].delete_blank

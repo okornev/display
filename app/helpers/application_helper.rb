@@ -57,7 +57,7 @@ module ApplicationHelper
   end
 
   def organization_home
-    current_user.organization_id? ? content_tag(:div, link_to(current_user.organization.name, organization_path).html_safe, :class => "title_text" ) : ''
+    current_user.organization ? content_tag(:div, link_to(current_user.organization.name, organization_path).html_safe, :class => "title_text" ) : ''
   end
 
   def app_nav(items)
@@ -75,7 +75,7 @@ module ApplicationHelper
 
   def organization_title
     content_for(:title) { organization_home }
-    content_for(:title_clean) {"#{current_user.organization_id? ? current_user.organization.name : ''} | OneOps" }
+    content_for(:title_clean) {"#{current_user.organization ? current_user.organization.name : ''} | OneOps" }
   end
 
   def root_page_header(selected = nil)
@@ -92,7 +92,7 @@ module ApplicationHelper
   end
 
   def organization_page_header(selected = nil)
-    return unless user_signed_in? && current_user.organization_id.present?
+    return unless user_signed_in? && current_user.organization
 
     organization_title
     menu_items = []
@@ -879,7 +879,7 @@ module ApplicationHelper
   end
 
   def wizard
-    return unless user_signed_in? && current_user.organization_id.present? && current_user.show_wizard?
+    return unless user_signed_in? && current_user.organization && current_user.show_wizard?
 
     assembly = if @assembly && @assembly.persisted?
       @assembly.is_a?(Cms::Ci) ? @assembly : (@assembly.is_a?(Cms::Relation) ? @assembly.toCi : nil)
@@ -1020,7 +1020,7 @@ module ApplicationHelper
         availability = platform.nsPath.split('/').last
         bc_label     = icon(availability == 'redundant' ? 'cubes' : 'cube', "#{availability} availability")
       end
-      "#{platform.ciName} #{content_tag(:sub, "ver. #{platform.ciAttributes.major_version}", :class => 'label label-success')} #{content_tag(:sub, bc_label)}"
+      "#{platform.ciName} #{content_tag(:sub, "ver. #{platform.ciAttributes.version}", :class => 'label label-success')} #{content_tag(:sub, bc_label)}"
     else
       active = platform.ciAttributes.attributes.has_key?(:is_active) && platform.ciAttributes.is_active == 'false' ? false : true
       "#{platform.ciName} #{content_tag(:sub, "ver. #{platform.ciAttributes.major_version}", :class => "label #{'label-success' if active}")}"
@@ -1274,12 +1274,14 @@ module ApplicationHelper
   end
 
   def platform_doc_link(platform, label, opts = {})
-    asset_url = Settings.asset_url.presence || 'cms/'
     ci_attrs  = platform.ciAttributes
-    pack      = ci_attrs.pack
-    anchor    = opts[:anchor]
+    pack_doc_link(ci_attrs.source, ci_attrs.pack, ci_attrs.version, label, opts)
+  end
+
+  def pack_doc_link(source, pack, version, label, opts = {})
+    anchor = opts[:anchor]
     link_to(raw(label),
-            "#{asset_url}public/#{ci_attrs.source}/packs/#{pack}/#{ci_attrs.version}/#{pack}.html#{"##{anchor}" if anchor.present?}",
+            "#{Settings.asset_url.presence || 'cms/'}public/#{source}/packs/#{pack}/#{version}/#{pack}.html#{"##{anchor}" if anchor.present?}",
             :target => '_blank',
             :class  => 'doc-link',
             :title  => 'go to documentation')
@@ -1295,5 +1297,9 @@ module ApplicationHelper
             catalog_pack_platform_path(source, pack_name, version, availability, pack_name),
             :class => 'doc-link',
             :title => 'go to pack page')
+  end
+
+  def expandable_content(options = {}, &block)
+    raw(link_to_function(content_tag(:b, raw(options[:label].presence || '<strong>...</strong>')), '$j(this).hide().siblings("span").toggle(300)') + content_tag(:span, options[:content] || capture(&block), :class => 'hide'))
   end
 end
